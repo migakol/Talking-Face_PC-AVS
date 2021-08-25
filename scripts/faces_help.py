@@ -90,13 +90,81 @@ def get_landmarks_from_folder(fa, folder_path):
 
     return preds
 
+
+def prepare_image(fa, img_in, p_bias=None):
+    """
+    Given a face image, crop it so that only one face is found
+    :param file_name:
+    :return:
+    """
+    input = io.imread(img_in)
+    img_size = input.shape[0]
+    pred_points = np.array(fa.get_landmarks(input))
+
+    if pred_points is None or len(pred_points.shape) != 3:
+        print('preprocessing failed')
+        return False, None, None
+
+    num_faces, size, _ = pred_points.shape
+    if num_faces == 1 and size == 68:
+        three_points = get_eyes_mouths(pred_points[0])
+    else:
+        print('preprocessing failed')
+        return False, None, None
+
+    avg_points = three_points
+    M = get_affine(avg_points, img_size)
+    affined_3landmarks = affine_align_3landmarks(three_points, M)
+    bias = get_mouth_bias(affined_3landmarks, img_size)
+
+    if p_bias is None:
+        bias = bias
+    else:
+        bias = p_bias * 0.2 + bias * 0.8
+
+    M_i = M.copy()
+    M_i[:, 2] = M[:, 2] + bias
+    img = cv.imread(img_in)
+    wrapped = affine_align_img(img, M_i, crop_size=img_size)
+
+    # img_save_path = os.path.join(out_folder, img_pth)
+    # img_save_path = os.path.join(folder_save_path, img_pth.split('/')[-1])
+    wrapped = cv.resize(wrapped, (224, 224))
+    # cv.imwrite(img_save_path, wrapped)
+
+    return True, wrapped, bias
+
+
+def preprocess_movie_folder(in_folder, out_folder):
+    """
+    Given a folder with frames of a movie, preprocess the frames
+    :param folder_path:
+    :param out_folder:
+    :return:
+    """
+    onlyfiles = [f for f in os.listdir(in_folder) if os.path.isfile(os.path.join(in_folder, f)) and f[-3:] == 'jpg']
+    onlyfiles = sorted(onlyfiles)
+    fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, device='cpu')
+
+    p_bias = None
+    for f in onlyfiles:
+        file_path = os.path.join(in_folder, f)
+        # Crop and wrap
+        status, wrapped, p_bias = prepare_image(fa, file_path, p_bias)
+        if not status:
+            print('preprocessing failed')
+            return
+        # Save file to output folder
+        img_save_path = os.path.join(out_folder, f)
+        cv.imwrite(img_save_path, wrapped)
+
+        print('Done ', f)
+
+
 def find_faces(folder_path, out_folder):
     fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, device='cpu')
     # preds = fa.get_landmarks_from_directory(folder_path)
     preds = get_landmarks_from_folder(fa, folder_path)
-
-    # input = io.imread('/Users/michaelko/Downloads/me_movie1/000216.jpg')
-    # preds = fa.get_landmarks(input)
 
     sumpoints = 0
     three_points_list = []
@@ -175,5 +243,9 @@ if __name__ == '__main__':
     # create_frames()
     # make_images_smaller('/Users/michaelko/Downloads/me_movie1')
     # find_faces('/Users/michaelko/Downloads/me_movie2')
-    find_faces('/Users/michaelko/Downloads/me_movie2', '/Users/michaelko/Downloads/me_movie3')
+
+    fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, device='cpu')
+    prepare_image(fa, '/Users/michaelko/Downloads/alan2--1-.jpeg')
+
+    # find_faces('/Users/michaelko/Downloads/me_movie2', '/Users/michaelko/Downloads/me_movie3')
     # copy_images('/Users/michaelko/Downloads/me_movie1', '/Users/michaelko/Downloads/me_movie2')
