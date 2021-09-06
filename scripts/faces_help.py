@@ -1,7 +1,7 @@
 import cv2 as cv
 import numpy as np
 import face_alignment
-from skimage import io
+    from skimage import io
 import skimage.transform as trans
 import os
 import matplotlib.pyplot as plt
